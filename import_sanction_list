@@ -1,0 +1,121 @@
+## Get a list of regulatory sanction lists in the xml format in the input folder
+filelist.ListInput.xml <- list.files(path = input_dir, 
+                                     pattern="*.xml", 
+                                     full.names=TRUE, 
+                                     recursive = FALSE)
+aFullFileNames = filelist.ListInput.xml
+
+## Function: 
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+import.ofac.xml <- function(aFullFileNames) {
+  
+  ## import OFAC lists in .xml format
+  df.OFACLists <- lapply(
+    aFullFileNames, ## loop through all OFAC lists
+    function(sFile) {
+      
+      ## debug only
+      # sFile = aFullFileNames[1]
+      
+      ## extract file name
+      tmp.filename = stringr::str_remove(stringr::word(sFile, -1, sep = '/'), '\\.xml$')
+      
+      ## show the process
+      writeLines(paste('---- Currently processing', tmp.filename, '------------'))
+      
+      ## read xml file
+      tmp.xml.raw = xml2::read_xml(sFile)
+      
+      ## extract each entry and convert it to list
+      tmp.xml.list = xml2::as_list(xml2::xml_children(tmp.xml.raw))
+      ## note that the first entry will be the record publish date and count
+      ## the sanction person starts from the second entry
+      
+      ## extract publish information
+      tmp.xml.pub = data.frame(t(unlist(tmp.xml.list[[1]])), stringsAsFactors = FALSE) 
+      
+      
+      ## show progress
+      tmp.record.cnt = length(tmp.xml.list) - 1 ## total no. of entries to be processed
+      pb <- utils::txtProgressBar(min = 0, max = tmp.record.cnt, style = 3)
+      
+      
+      ## process each entry, which is a sanctioned person
+      tmp.sanction.entry = lapply(
+        2:tmp.record.cnt, ## again, the sanction person starts from the second element
+        function(idx) {
+          
+          ## debug only
+          # idx = 22
+          
+          ## update progress
+          utils::setTxtProgressBar(pb, idx)
+          # print(idx)
+          
+          ## extract the element
+          sanction.entry = tmp.xml.list[[idx]]
+          
+          ## information such as firstname, lastname, and sdnType should be unique for each uid
+          ## these fields constitute the primary information of this uid
+          ## other fields might have multiple entries, and their names all contain "List" or it is "vesselInfo"
+          list.entry = names(sanction.entry)[stringr::str_detect(names(sanction.entry), "List")] ## find all tags that contain "List"
+          list.entry = lubridate::intersect(sort(names(sanction.entry)), sort(c(list.entry, "vesselInfo"))) ## add vesselInfo
+          unique.entry = lubridate::setdiff(sort(names(sanction.entry)), list.entry)
+          
+          ## assign NA when element is empty;
+          ## otherwise, it will drop by unlist/flatten
+          sanction.entry = ListEmptyToObj(sanction.entry, NA)
+          
+          ## convert primary information to data frame
+          tmp.primary = data.frame(purrr::flatten(sanction.entry[unique.entry]), stringsAsFactors = FALSE)
+          
+          
+          ## for list entry, since they might have multiple records
+          ## (for instance, one uid might have 2 entries in birthdate list, while 9 entries in Address List)
+          ## it is very hard to reconcile them
+          ## as a result, instead of consolidating all of them into one data frame
+          ## one data frame will be created for one list, tagged by uid
+          tmp.Reference = lapply(
+            list.entry, 
+            function(le) {
+              
+              ## debug only
+              # le = list.entry[5]
+              # print(le)
+              
+              ## Extract and Flattern one element
+              tmp.element = sanction.entry[[le]] 
+              
+              if (le == 'programList') { ## special handling for ProgramList - there is not sub-name
+                tmp.element = lapply(tmp.element, function(x) {names(x) = 'program'; return(x)})
+              }
+              
+              ## convert it to data frame
+              tmp.df.element = dplyr::bind_rows(tmp.element)
+              tmp.df.element = tidyr::unnest(tmp.df.element, cols = names(tmp.df.element))
+              
+              ## rename the uid
+              ## for instance, for id List, rename the uid to id.uid
+              names(tmp.df.element)[names(tmp.df.element) == 'uid'] = paste(substr(le, 1, nchar(le)-4), 'uid', sep = '.')
+              
+              ## add the uid of record to the dataframe
+              tmp.df.element$uid = tmp.primary$uid
+              
+              ## move uid to the first column
+              tmp.df.element = tmp.df.element[, c(ncol(tmp.df.element), 1:(ncol(tmp.df.element) - 1))]
+              
+              ## output the results
+              return(tmp.df.element)
+              
+            })
+          
+          ## assign name to each of the dataframe
+          names(tmp.Reference) = stringr::str_remove(list.entry, 'List')
+          
+        })
+    
+      
+      })
+}
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+## End of Function;
