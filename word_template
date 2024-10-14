@@ -1,0 +1,404 @@
+Sub Add_Caption(TableOrFigure As String)
+
+'
+' Add_Caption Macro
+' Add caption for table/figure if it does not exsit.
+'
+' Input:
+'   TableOrFigure (String): can only be table or figure, case-insensitive
+'
+' Note:
+'   When the caption is not placed in the line above the figure/table
+'   or it is not in the caption format
+'   the caption will be deemed as 'does not exist'
+'
+
+
+'Capitalize input to make it case-insensitive
+Dim sObjType As String
+sObjType = UCase(TableOrFigure)
+
+
+'Check if the Input is valid
+'If not, prompt error message
+If sObjType <> "TABLE" And sObjType <> "FIGURE" Then
+    MsgBox "Valid Input: 'Table' or 'Figure' (case-insensitive)."
+    Exit Sub
+End If
+' If valid, find the caption ID
+Dim iCaptionID As Integer
+If sObjType = "TABLE" Then
+    iCaptionID = wdCaptionTable
+Else
+    iCaptionID = wdCaptionFigure
+End If
+
+
+'Format caption title
+' For instance, for the first figure in chapter 5, the caption title will be "Figure 5-1"
+' If there are not headings, then the caption title will be "Figure 1"
+' 1. Check whether there are headings
+Set currentRange = ActiveDocument.Content
+Dim bIncChapter As Boolean
+With currentRange.Find
+    .Forward = True             'move forward only
+    .Style = wdStyleHeading1    'the type of style to find
+    bIncChapter = .Execute           'update currentRange to the first found instance
+End With
+' 2. If there are headings, check whether they are numbered lists
+If bIncChapter Then
+    Dim strHeadingNo
+    strHeadingNo = currentRange.ListFormat.ListString
+    If strHeadingNo = "" Then
+        bIncChapter = False
+    ElseIf Asc(strHeadingNo) = 63 Then
+        bIncChapter = False
+    End If
+End If
+With CaptionLabels(iCaptionID)
+    .IncludeChapterNumber = bIncChapter
+    .ChapterStyleLevel = 1
+    .NumberStyle = wdCaptionNumberStyleArabic
+End With
+
+
+'Store the current position for future reference
+Dim CurRng As Range
+Set CurRng = Selection.Range
+
+
+'Move the cursor to the beginning of the selection
+If sObjType = "TABLE" Then
+    CurRng.Tables(1).Select
+End If
+Selection.Collapse wdCollapseStart
+
+
+'Find the first word in the paragraph right above table/figure
+Selection.Previous(Unit:=wdParagraph, Count:=1).Words(1).Select
+Dim Ctext As String
+Ctext = UCase(Selection.Text)
+
+
+'Check if table/figure caption already exists
+If Selection.Style <> "Caption" Or Ctext <> sObjType & " " Then             'If not, continue to add caption above figure/table
+    CurRng.Select
+    Selection.InsertCaption Label:=iCaptionID, titleautotext:="", Title:=":", _
+        Position:=wdCaptionPositionAbove, ExcludeLabel:=0
+       
+    'Add space after colon
+    Selection.TypeText Text:=" "
+Else                                                                        'If exists, move the cursor to the end
+    Selection.EndOf Unit:=wdParagraph, Extend:=wdMove
+    
+End If
+
+    
+    
+End Sub
+
+
+Sub Format_Table(TableStyle As String, HeaderRow As Integer, ColorSet As String)
+
+'
+' Format_Table Macro
+' Format table.
+'
+' Input:
+'   TableStyle (String): Grid or List, case-insensitive
+'   HeaderRow (Integer): 1 or 2
+'   ColorSet (String): FRB, Blue, Green,case-insensitive
+
+
+'-----------< Sanity check >-----------'
+
+'1. Check if the cursor in in a table
+If Selection.Information(wdWithInTable) Then
+    Dim CurTable As Table
+    Set CurTable = Selection.Tables(1)
+    CurTable.Select
+Else
+    MsgBox "Please select a table or place the cursor within a table."
+    Exit Sub
+End If
+
+'2. Check if input TableStyle is valid
+TableStyle = UCase(TableStyle)  ' Capitalize to make it case-insensitive
+If TableStyle <> "GRID" And TableStyle <> "LIST" Then
+    MsgBox "Please input valid value for TableStyle: Grid or List (case-insensitive)."
+    Exit Sub
+End If
+
+'3. Check if input TableStyle is valid
+If HeaderRow <> 1 And HeaderRow <> 2 Then
+    MsgBox "Please input valid value for HeaderRow: 1 or 2."
+    Exit Sub
+End If
+
+'4. Check if input ColorSet is valid
+ColorSet = UCase(ColorSet)  ' Capitalize to make it case-insensitive
+If ColorSet <> "FRB" And ColorSet <> "BLUE" And ColorSet <> "GREEN" Then
+    MsgBox "Please input valid value for ColorSet: FRB, Blue, or Green (case-insensitive)."
+    Exit Sub
+End If
+
+
+'---< End of Section >---'
+
+
+
+'-----------< Color Setting >-----------'
+If ColorSet = "FRB" Then
+
+    MainColor1 = 2637834                            'Shading of first header row - FRB Green
+    MainColor2 = 2196395                            'Shading of second header row - FRB Gold
+    
+    BackgroundColor1 = wdColorWhite                 'Shading of odd rows (exclude header rows) - White
+    BackgroundColor2 = 13816530                     'Shading of even rows (excl header rows) - FRB Gray
+    
+    If HeaderRow = 1 Then                           'Color of the outside border of header row(s)
+        BorderColor1 = MainColor2                   'FRB Gold
+    Else
+        BorderColor1 = MainColor1                   'FRB Green
+    End If
+    BorderColor2 = wdColorWhite                     'Color of inside border of header row(s)
+    BorderColor3 = wdColorBlack                     'Color of inside border of non-header rows
+    
+ElseIf ColorSet = "BLUE" Then
+
+    MainColor1 = 6444358                            'Shading of first header row
+    MainColor2 = 12036763                           'Shading of second header row
+    
+    BackgroundColor1 = 13881807                     'Shading of odd rows (exclude header rows), alternative: 15131358
+    BackgroundColor2 = 15395305                     'Shading of even rows (excl header rows), alternative: 15987183
+    
+    If HeaderRow = 1 Then                           'Color of the outside border of header row(s)
+        BorderColor1 = MainColor2                   'FRB Gold
+    Else
+        BorderColor1 = MainColor1                   'FRB Green
+    End If
+    BorderColor2 = wdColorWhite                     'Color of inside border of header row(s)
+    BorderColor3 = wdColorWhite                     'Color of inside border of non-header rows
+    
+ElseIf ColorSet = "GREEN" Then
+
+    MainColor1 = 4233583                            'Shading of first header row
+    MainColor2 = 8573112                            'Shading of second header row
+    
+    BackgroundColor1 = 14216934                     'Shading of odd rows (exclude header rows)
+    BackgroundColor2 = 15595507                     'Shading of even rows (excl header rows)
+    
+    If HeaderRow = 1 Then                           'Color of the outside border of header row(s)
+        BorderColor1 = MainColor2                   'FRB Gold
+    Else
+        BorderColor1 = MainColor1                   'FRB Green
+    End If
+    BorderColor2 = wdColorWhite                     'Color of inside border of header row(s)
+    BorderColor3 = wdColorWhite                     'Color of inside border of non-header rows
+    
+
+'    Selection.Shading.BackgroundPatternColor = 4233583
+'    Selection.Shading.BackgroundPatternColor = 8573112
+'    Selection.Shading.BackgroundPatternColor = 14216934
+'    Selection.Shading.BackgroundPatternColor = 15595507
+
+End If
+
+
+
+
+
+
+'---< End of Section >---'
+
+
+'-----------< General Setting >-----------'
+'Reset current format
+CurTable.Range.Font.Reset       'Reset font, but keep current paragraph setting
+CurTable.Style = "Table Grid"   'clear table formatting
+
+'Boarder format - Default Setting
+Options.DefaultBorderLineStyle = wdLineStyleSingle
+Options.DefaultBorderColor = BorderColor3
+Options.DefaultBorderLineWidth = wdLineWidth050pt
+
+'Boarder format - header rows, top and bottom
+CurTable.Borders.Enable = True              'Enable border
+With Selection.Borders(wdBorderTop)            'Top
+    .LineStyle = wdLineStyleSingle
+    .LineWidth = wdLineWidth150pt
+    .Color = MainColor1                        'FRB Green
+End With
+With Selection.Borders(wdBorderBottom)         'Bottom
+    .LineStyle = wdLineStyleSingle
+    .LineWidth = wdLineWidth150pt
+    .Color = BorderColor1
+End With
+
+'Height
+CurTable.Rows.HeightRule = wdRowHeightAuto
+CurTable.Rows.Height = InchesToPoints(0)
+
+'Paragraph alignment: center left
+CurTable.Range.ParagraphFormat.Alignment = wdAlignParagraphLeft
+CurTable.Range.Cells.VerticalAlignment = wdCellAlignVerticalCenter
+CurTable.Rows.Alignment = wdAlignRowCenter
+
+'Font
+With CurTable.Range.Font
+    .Name = "Calibri"
+    .Size = 10
+    .Bold = False
+End With
+
+'Shading
+With CurTable.Shading
+    .Texture = wdTextureNone
+    .ForegroundPatternColor = wdColorAutomatic
+    .BackgroundPatternColor = BackgroundColor1
+End With
+
+'Remove left, right, and vertical border if the table style is "list"
+If TableStyle = "LIST" Then
+    CurTable.Borders(wdBorderLeft).LineStyle = wdLineStyleNone
+    CurTable.Borders(wdBorderRight).LineStyle = wdLineStyleNone
+    CurTable.Borders(wdBorderVertical).LineStyle = wdLineStyleNone
+End If
+
+'---< End of Section >---'
+
+
+'Insert caption
+Call GeneralMacros.Add_Caption(TableOrFigure:="Table")
+
+
+'-----------< Header Rows >-----------'
+Dim RngHeaderRow As Range
+Set RngHeaderRow = CurTable.Cell(1, 1).Range
+RngHeaderRow.Expand Unit:=wdRow
+
+'Shading - first header row
+With RngHeaderRow.Shading
+    .Texture = wdTextureNone
+    .ForegroundPatternColor = wdColorAutomatic
+    .BackgroundPatternColor = MainColor1           'FRB Green
+End With
+
+'Shading - second header row, if exists
+If HeaderRow = 2 Then
+    
+    'Center Align the first row
+    RngHeaderRow.ParagraphFormat.Alignment = wdAlignParagraphCenter
+    
+    'Find the cell in the second header row
+    Dim RngSecondRow As Range
+    Set RngSecondRow = RngHeaderRow.Next(Unit:=wdRow)
+    
+    'Shading
+    With RngSecondRow.Shading
+        .Texture = wdTextureNone
+        .ForegroundPatternColor = wdColorAutomatic
+        .BackgroundPatternColor = MainColor2       'FRB Gold
+    End With
+    
+    'Select both header rows
+    RngHeaderRow.End = RngSecondRow.End
+    RngHeaderRow.Expand Unit:=wdRow
+    
+End If
+
+'Set header rows
+RngHeaderRow.Rows.HeadingFormat = True
+
+'Font
+RngHeaderRow.Font.Color = wdColorWhite
+RngHeaderRow.Font.Bold = True
+
+'Border
+RngHeaderRow.Select
+If TableStyle = "GRID" Or HeaderRow = 2 Then                'Inside border
+    With Selection.Borders
+        .InsideLineStyle = Options.DefaultBorderLineStyle
+        .InsideColor = BorderColor2
+        .InsideLineWidth = Options.DefaultBorderLineWidth
+    End With
+End If
+With RngHeaderRow.Borders(wdBorderBottom)                   'bottom border
+    .LineStyle = wdLineStyleSingle
+    .LineWidth = wdLineWidth150pt
+    .Color = BorderColor1
+End With
+
+'---< End of Section >---'
+
+
+'-----------< Non-Header Rows >-----------'
+Dim TotalRow As Integer
+TotalRow = CurTable.Rows.Count
+
+Dim RngFirstCol As Range, RngNonHeaderRow As Range, RngFirstColCell() As Range
+'Select first column
+Set RngFirstCol = CurTable.Cell(1, 1).Range
+RngFirstCol.Expand Unit:=wdColumn
+RngFirstCol.Select
+
+'Count cells in the first column
+Dim TotalCell As Integer
+TotalCell = Selection.Cells.Count
+
+Dim i As Integer
+Dim CellIndex As Integer
+Dim oCell As Cell
+CellIndex = 0
+
+'Count the number of (merged) cells that are in the first columns and not in header row(s)
+'Store the position of those cells in array RngFirstColCell
+For i = 1 To TotalCell
+
+    Set oCell = Selection.Cells(i)
+    
+    'Use Row index to check if the cells are in the header rows; and
+    'Use column index to check wither they are in the first column
+    If oCell.RowIndex >= HeaderRow + 1 And oCell.ColumnIndex = 1 Then
+        
+        CellIndex = CellIndex + 1                       'Count number of cells
+        ReDim Preserve RngFirstColCell(1 To CellIndex)  'Save the positions in the array
+        Set RngFirstColCell(CellIndex) = oCell.Range
+            
+    End If
+Next i
+    
+'Shading
+For i = 1 To CellIndex
+
+    'Find the range of row
+    Set RngNonHeaderRow = RngFirstColCell(i)
+    If i < CellIndex Then
+        RngNonHeaderRow.End = RngFirstColCell(i + 1).Start - 1
+    Else
+        RngNonHeaderRow.End = CurTable.Range.End - 1
+    End If
+    
+    If i Mod 2 = 0 Then
+        RngNonHeaderRow.Shading.BackgroundPatternColor = BackgroundColor2       'FRB Gray
+    Else
+        RngNonHeaderRow.Shading.BackgroundPatternColor = BackgroundColor1
+    End If
+    
+Next i
+'---< End of Section >---'
+
+
+'-----------< Autofit >-----------'
+CurTable.Select
+Selection.Tables(1).AutoFitBehavior wdAutoFitContent
+Selection.Collapse 1                                        'Move cursor to the beginning
+Selection.Tables(1).AutoFitBehavior wdAutoFitWindow
+Selection.Collapse 0                                        'Move cursor to the ending
+
+
+'---< End of Section >---'
+
+Application.ScreenUpdating = True   ' Turn on screen at the end
+
+End Sub
